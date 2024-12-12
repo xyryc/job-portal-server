@@ -57,14 +57,16 @@ async function run() {
 
       // filter job info
       for (const application of result) {
-        console.log(application.job_id);
-
         const jobQuery = { _id: new ObjectId(application.job_id) };
         const jobResult = await jobsCollection.findOne(jobQuery);
         if (jobResult) {
           application.title = jobResult.title;
           application.company = jobResult.company;
-          application.company_logo = jobResult.company_logo
+          application.company_logo = jobResult.company_logo;
+          application.location = jobResult.location;
+          application.jobType = jobResult.jobType;
+          application.category = jobResult.category;
+          application.hr_name = jobResult.hr_name
         }
       }
       res.send(result);
