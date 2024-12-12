@@ -30,7 +30,7 @@ async function run() {
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
 
-    // jobs related apis
+    // jobs related APIs
     const jobsCollection = client.db("job_portal").collection("jobs");
     const jobApplicationsCollection = client
       .db("job_portal")
@@ -49,7 +49,13 @@ async function run() {
       res.send(result);
     });
 
-    // job application apis
+    app.post("/jobs", async (req, res) => {
+      const newJob = req.body;
+      const result = await jobsCollection.insertOne(newJob);
+      res.send(result);
+    });
+
+    // job application APIs
     app.get("/job-applications", async (req, res) => {
       const email = req.query.email;
       const query = { applicant_email: email };
@@ -66,7 +72,7 @@ async function run() {
           application.location = jobResult.location;
           application.jobType = jobResult.jobType;
           application.category = jobResult.category;
-          application.hr_name = jobResult.hr_name
+          application.hr_name = jobResult.hr_name;
         }
       }
       res.send(result);
