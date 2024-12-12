@@ -30,14 +30,20 @@ async function run() {
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
 
-    // jobs related APIs
     const jobsCollection = client.db("job_portal").collection("jobs");
     const jobApplicationsCollection = client
       .db("job_portal")
       .collection("job_applications");
 
+    // jobs related APIs
     app.get("/jobs", async (req, res) => {
-      const cursor = jobsCollection.find();
+      const email = req.query.email;
+      let query = {};
+      if (email) {
+        query = { hr_email: email };
+      }
+
+      const cursor = jobsCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
     });
@@ -81,6 +87,28 @@ async function run() {
     app.post("/job-applications", async (req, res) => {
       const application = req.body;
       const result = await jobApplicationsCollection.insertOne(application);
+
+      // not the best way (use aggregate)
+      const id = application.job_id;
+      const query = { _id: new ObjectId(id) };
+      const job = await jobsCollection.findOne(query);
+      let newCount = 0;
+      if (job.applicationCount) {
+        newCount = job.applicationCount + 1;
+      } else {
+        newCount = 1;
+      }
+
+      // update the job info
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          applicationCount: newCount,
+        },
+      };
+
+      const updatedResult = await jobsCollection.updateOne(filter, updatedDoc);
+
       res.send(result);
     });
   } finally {
