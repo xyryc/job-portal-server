@@ -19,7 +19,7 @@ app.use(cookieParser());
 
 const verifiyToken = (req, res, next) => {
   console.log("inside verify token middleware", req.cookies);
-  const token = req.cookies.token;
+  const token = req?.cookies?.token;
 
   if (!token) {
     return res.status(401).send({ message: "Unauthorized access" });
@@ -29,6 +29,7 @@ const verifiyToken = (req, res, next) => {
     if (error) {
       return res.status(401).send({ message: "Unauthorized access" });
     }
+    req.user = decoded;
 
     next();
   });
@@ -102,6 +103,10 @@ async function run() {
     app.get("/job-applications", verifiyToken, async (req, res) => {
       const email = req.query.email;
       const query = { applicant_email: email };
+
+      if (req.user.email !== req.query.email) {
+        return res.status(403).send({ message: "Access forbidden" });
+      }
 
       const result = await jobApplicationsCollection.find(query).toArray();
 
