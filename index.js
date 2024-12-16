@@ -61,12 +61,22 @@ async function run() {
       .db("job_portal")
       .collection("job_applications");
 
+    // jwt secret generation: node> require('crypto').randomBytes(64).toString('hex')
     // Auth related APIs
     app.post("/jwt", async (req, res) => {
       const user = req.body;
       const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: "1h" });
       res
         .cookie("token", token, {
+          httpOnly: true,
+          secure: false,
+        })
+        .send({ success: true });
+    });
+
+    app.post("/logout", async (req, res) => {
+      res
+        .clearCookie("token", {
           httpOnly: true,
           secure: false,
         })
