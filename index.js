@@ -22,7 +22,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 const verifiyToken = (req, res, next) => {
-  console.log("inside verify token middleware", req.cookies);
+  // console.log("inside verify token middleware", req.cookies);
   const token = req.cookies?.token;
 
   if (!token) {
@@ -118,6 +118,13 @@ async function run() {
     res.send(result);
   });
 
+  app.delete("/job/:id", async (req, res) => {
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const result = await jobsCollection.deleteOne(query);
+    res.send(result);
+  });
+
   // job application APIs
   app.get("/job-applications", verifiyToken, async (req, res) => {
     const email = req.query.email;
@@ -197,6 +204,7 @@ async function run() {
     res.send(result);
   });
 
+  // delete applied position
   app.delete("/job-application/delete/:id", async (req, res) => {
     const id = req.params.id;
     const query = { _id: new ObjectId(id) };
