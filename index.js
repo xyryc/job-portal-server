@@ -52,152 +52,161 @@ const client = new MongoClient(uri, {
 
 async function run() {
   // try {
-    // Connect the client to the server	(optional starting in v4.7)
-    // await client.connect();
-    // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
-    // console.log(
-    // "Pinged your deployment. You successfully connected to MongoDB!"
-    // );
+  // Connect the client to the server	(optional starting in v4.7)
+  // await client.connect();
+  // Send a ping to confirm a successful connection
+  // await client.db("admin").command({ ping: 1 });
+  // console.log(
+  // "Pinged your deployment. You successfully connected to MongoDB!"
+  // );
 
-    const jobsCollection = client.db("job_portal").collection("jobs");
-    const jobApplicationsCollection = client
-      .db("job_portal")
-      .collection("job_applications");
+  const jobsCollection = client.db("job_portal").collection("jobs");
+  const jobApplicationsCollection = client
+    .db("job_portal")
+    .collection("job_applications");
 
-    // jwt secret generation: node> require('crypto').randomBytes(64).toString('hex')
-    // Auth related APIs
-    app.post("/jwt", async (req, res) => {
-      const user = req.body;
-      const token = jwt.sign(user, process.env.JWT_SECRET, {
-        expiresIn: "10h",
-      });
-      res
-        .cookie("token", token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-        })
-        .send({ success: true });
+  // jwt secret generation: node> require('crypto').randomBytes(64).toString('hex')
+  // Auth related APIs
+  app.post("/jwt", async (req, res) => {
+    const user = req.body;
+    const token = jwt.sign(user, process.env.JWT_SECRET, {
+      expiresIn: "10h",
     });
+    res
+      .cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      })
+      .send({ success: true });
+  });
 
-    app.post("/logout", async (req, res) => {
-      res
-        .clearCookie("token", {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-        })
-        .send({ success: true });
-    });
+  app.post("/logout", async (req, res) => {
+    res
+      .clearCookie("token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      })
+      .send({ success: true });
+  });
 
-    // jobs related APIs
-    app.get("/jobs", async (req, res) => {
-      const email = req.query.email;
-      let query = {};
-      if (email) {
-        query = { hr_email: email };
+  // jobs related APIs
+  app.get("/jobs", async (req, res) => {
+    const email = req.query.email;
+
+    let query = {};
+    if (email) {
+      query = { hr_email: email };
+    }
+
+    const cursor = jobsCollection.find(query);
+    const result = await cursor.toArray();
+    res.send(result);
+  });
+
+  app.get("/jobs/:id", async (req, res) => {
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const result = await jobsCollection.findOne(query);
+    res.send(result);
+  });
+
+  app.post("/jobs", async (req, res) => {
+    const newJob = req.body;
+    const result = await jobsCollection.insertOne(newJob);
+    res.send(result);
+  });
+
+  // job application APIs
+  app.get("/job-applications", verifiyToken, async (req, res) => {
+    const email = req.query.email;
+    const query = { applicant_email: email };
+
+    if (req.user.email !== req.query.email) {
+      return res.status(403).send({ message: "Access forbidden" });
+    }
+
+    const result = await jobApplicationsCollection.find(query).toArray();
+
+    // filter job info
+    for (const application of result) {
+      const jobQuery = { _id: new ObjectId(application.job_id) };
+      const jobResult = await jobsCollection.findOne(jobQuery);
+      if (jobResult) {
+        application.title = jobResult.title;
+        application.company = jobResult.company;
+        application.company_logo = jobResult.company_logo;
+        application.location = jobResult.location;
+        application.jobType = jobResult.jobType;
+        application.category = jobResult.category;
+        application.hr_name = jobResult.hr_name;
       }
+    }
+    res.send(result);
+  });
 
-      const cursor = jobsCollection.find(query);
-      const result = await cursor.toArray();
-      res.send(result);
-    });
+  app.get("/job-applications/jobs/:job_id", async (req, res) => {
+    const jobId = req.params.job_id;
+    const query = { job_id: jobId };
+    const result = await jobApplicationsCollection.find(query).toArray();
+    res.send(result);
+  });
 
-    app.get("/jobs/:id", async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await jobsCollection.findOne(query);
-      res.send(result);
-    });
+  app.post("/job-applications", async (req, res) => {
+    const application = req.body;
+    const result = await jobApplicationsCollection.insertOne(application);
 
-    app.post("/jobs", async (req, res) => {
-      const newJob = req.body;
-      const result = await jobsCollection.insertOne(newJob);
-      res.send(result);
-    });
+    // not the best way (use aggregate)
+    const id = application.job_id;
+    const query = { _id: new ObjectId(id) };
+    const job = await jobsCollection.findOne(query);
+    let newCount = 0;
+    if (job.applicationCount) {
+      newCount = job.applicationCount + 1;
+    } else {
+      newCount = 1;
+    }
 
-    // job application APIs
-    app.get("/job-applications", verifiyToken, async (req, res) => {
-      const email = req.query.email;
-      const query = { applicant_email: email };
+    // update the job info
+    const filter = { _id: new ObjectId(id) };
+    const updatedDoc = {
+      $set: {
+        applicationCount: newCount,
+      },
+    };
 
-      if (req.user.email !== req.query.email) {
-        return res.status(403).send({ message: "Access forbidden" });
-      }
+    const updatedResult = await jobsCollection.updateOne(filter, updatedDoc);
 
-      const result = await jobApplicationsCollection.find(query).toArray();
+    res.send(result);
+  });
 
-      // filter job info
-      for (const application of result) {
-        const jobQuery = { _id: new ObjectId(application.job_id) };
-        const jobResult = await jobsCollection.findOne(jobQuery);
-        if (jobResult) {
-          application.title = jobResult.title;
-          application.company = jobResult.company;
-          application.company_logo = jobResult.company_logo;
-          application.location = jobResult.location;
-          application.jobType = jobResult.jobType;
-          application.category = jobResult.category;
-          application.hr_name = jobResult.hr_name;
-        }
-      }
-      res.send(result);
-    });
+  app.patch("/job-applications/:id", async (req, res) => {
+    const id = req.params.id;
+    const data = req.body;
+    const filter = { _id: new ObjectId(id) };
+    const updatedDoc = {
+      $set: {
+        status: data.status,
+      },
+    };
+    const result = await jobApplicationsCollection.updateOne(
+      filter,
+      updatedDoc
+    );
+    res.send(result);
+  });
 
-    app.get("/job-applications/jobs/:job_id", async (req, res) => {
-      const jobId = req.params.job_id;
-      const query = { job_id: jobId };
-      const result = await jobApplicationsCollection.find(query).toArray();
-      res.send(result);
-    });
+  app.delete("/job-application/delete/:id", async (req, res) => {
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const result = await jobApplicationsCollection.deleteOne(query);
+    res.send(result);
+  });
 
-    app.post("/job-applications", async (req, res) => {
-      const application = req.body;
-      const result = await jobApplicationsCollection.insertOne(application);
-
-      // not the best way (use aggregate)
-      const id = application.job_id;
-      const query = { _id: new ObjectId(id) };
-      const job = await jobsCollection.findOne(query);
-      let newCount = 0;
-      if (job.applicationCount) {
-        newCount = job.applicationCount + 1;
-      } else {
-        newCount = 1;
-      }
-
-      // update the job info
-      const filter = { _id: new ObjectId(id) };
-      const updatedDoc = {
-        $set: {
-          applicationCount: newCount,
-        },
-      };
-
-      const updatedResult = await jobsCollection.updateOne(filter, updatedDoc);
-
-      res.send(result);
-    });
-
-    app.patch("/job-applications/:id", async (req, res) => {
-      const id = req.params.id;
-      const data = req.body;
-      const filter = { _id: new ObjectId(id) };
-      const updatedDoc = {
-        $set: {
-          status: data.status,
-        },
-      };
-      const result = await jobApplicationsCollection.updateOne(
-        filter,
-        updatedDoc
-      );
-      res.send(result);
-    });
   // } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+  // Ensures that the client will close when you finish/error
+  // await client.close();
   // }
 }
 run().catch(console.dir);
