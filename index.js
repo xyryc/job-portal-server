@@ -184,7 +184,6 @@ async function run() {
     };
 
     const updatedResult = await jobsCollection.updateOne(filter, updatedDoc);
-
     res.send(result);
   });
 
@@ -208,6 +207,19 @@ async function run() {
   app.delete("/job-application/delete/:id", async (req, res) => {
     const id = req.params.id;
     const query = { _id: new ObjectId(id) };
+
+    const findJob = await jobApplicationsCollection.findOne(query);
+    const jobId = { _id: new ObjectId(findJob.job_id) };
+    const job = await jobsCollection.findOne(jobId);
+
+    const updatedDoc = {
+      $set: {
+        applicationCount: job.applicationCount - 1,
+      },
+    };
+
+    const updatedResult = await jobsCollection.updateOne(jobId, updatedDoc);
+
     const result = await jobApplicationsCollection.deleteOne(query);
     res.send(result);
   });
